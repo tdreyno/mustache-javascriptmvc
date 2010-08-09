@@ -6,7 +6,7 @@ steal.plugins('jquery/view')
   
 	$.View.register({
 	
-		suffix: "html",
+		suffix: "mustache",
 		
 		renderer: function(id, text){
 		  Mustache.TemplateCache[id] = text;
