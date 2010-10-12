@@ -1,17 +1,17 @@
 steal.plugins('jquery/view')
-        .then("mustache-lib")
+        .then("handlebars")
         .then(function($) {
   
-  Mustache.TemplateCache = {};
+  Handlebars.TemplateCache = {};
   
 	$.View.register({
 	
 		suffix: "mustache",
 		
 		renderer: function(id, text){
-		  Mustache.TemplateCache[id] = text;
-			return function(data){
-				return Mustache.to_html(Mustache.TemplateCache[id], data)
+      Handlebars.TemplateCache[id] = Handlebars.compile(text);
+			return function(data, helpers){
+				return Handlebars.TemplateCache[id](data, helpers);
 			}
 		},
 		
@@ -28,7 +28,7 @@ steal.plugins('jquery/view')
 		},
 		
 		script: function(id, str){
-  		return "((function(){ Mustache.TemplateCache["+id+"] = "+str+"; return function(data){return Mustache.to_html(Mustache.TemplateCache["+id+"], data)} })())";
+  		return "((function(){ Handlebars.TemplateCache["+id+"] = Handlebars.compile("+str+"); return function(data){return Mustache.TemplateCache[id](data)} })())";
 		}
 	});
 	
