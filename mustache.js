@@ -1,5 +1,5 @@
-steal.plugins('jquery/view')
-        .then("handlebars")
+steal('jquery/view')
+        .then("./handlebars")
         .then(function($) {
   
   Handlebars.TemplateCache = {};
