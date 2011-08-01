@@ -1,6 +1,0 @@
-<h1>Colors</h1>
-  <ul>
-      <li><strong>red</strong></li>
-      <li><strong>green</strong></li>
-      <li><strong>blue</strong></li>
-  </ul>

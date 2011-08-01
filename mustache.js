@@ -1,5 +1,5 @@
-steal.plugins('jquery/view')
-        .then("handlebars")
+steal('jquery/view')
+        .then("./handlebars")
         .then(function($) {
   
   Handlebars.TemplateCache = {};
@@ -11,7 +11,8 @@ steal.plugins('jquery/view')
 		renderer: function(id, text){
       Handlebars.TemplateCache[id] = Handlebars.compile(text);
 			return function(data, helpers){
-				return Handlebars.TemplateCache[id](data, helpers);
+				// a jquerymx view 'helper' is not the same thing as a handlebars 'helper' - can we proxy?
+				return Handlebars.TemplateCache[id](data);
 			}
 		},
 		
