@@ -1,4 +1,4 @@
-steal('jquery/view')
+steal.plugins('jquery/view')
         .then("./handlebars")
         .then(function($) {
   
@@ -33,4 +33,10 @@ steal('jquery/view')
 		}
 	});
 	
+	Handlebars.registerHelper('hookupModel',function() {
+		var model = this, id = $.View.hookup(function(el) {
+			model.hookup(el);
+		});
+		return 'data-view-id="' + id + '"';
+	});
 })
