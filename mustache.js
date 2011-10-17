@@ -1,8 +1,19 @@
-steal.plugins('jquery/view')
+steal.plugins('jquery/view','jquery/lang/json')
         .then("./handlebars")
         .then(function($) {
   
   Handlebars.TemplateCache = {};
+  
+  var replaceChar = steal.cleanId('/');
+  
+  steal.build.types['text/mustache'] = function(script,loadScriptText) {
+		var text = script.text || loadScriptText(script.src),
+			id = script.id || script.getAttribute("id");
+		// there is a bug in steal when building on windows that causes it to 
+		// put backslashes in there
+		id = id.replace(/\\/g,replaceChar);
+		return jQuery.View.registerScript("mustache", id, text);
+  };
   
 	$.View.register({
 	
@@ -13,7 +24,7 @@ steal.plugins('jquery/view')
 			return function(data, helpers){
 				// a jquerymx view 'helper' is not the same thing as a handlebars 'helper' - can we proxy?
 				return Handlebars.TemplateCache[id](data);
-			}
+			};
 		},
 		
 		get: function(id, url){
@@ -27,9 +38,10 @@ steal.plugins('jquery/view')
 				}).responseText;
 			return this.renderer(id, text);
 		},
-		
 		script: function(id, str){
-  		return "((function(){ Handlebars.TemplateCache["+id+"] = Handlebars.compile("+str+"); return function(data){return Mustache.TemplateCache[id](data)} })())";
+	  		return "((function(){ Handlebars.TemplateCache['"+id+"'] = Handlebars.compile("+
+	  			$.quoteString(str) +
+	  		"); return function(data){return Handlebars.TemplateCache['"+id+"'](data)} })())";
 		}
 	});
 	

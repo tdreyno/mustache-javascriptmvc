@@ -61,3 +61,37 @@ test("Ensure javascript MVC helpers are passed into handlebars/mustache", functi
     equals($.trim(testOutput.replace(/\n/g,"").replace(/  /g," ")),correctOutput);
  });
 
+test("Ensure hookup model works",function() {
+	$.Model('HookupTest');
+	var model = new HookupTest({id:123,name:'test'});
+	
+	$('body').append($.View("test/qunit/hookup.mustache", model));
+	equals($('.model').model().id,123);
+	
+	// cleanup
+	delete window.HookupTest;
+	$('.model').remove();
+});
+
+test("Ensure build works",function() {
+	function strip(str) {
+		return str.replace(/[\s\r\n]+/g,'');
+	}
+    var template = '<h1>{{header}}</h1>\
+<ul>\
+{{#item}}\
+<li><strong>{{name}}</strong></li>\
+{{/item}}\
+</ul>',	
+    	correctOutput = "<h1>Colors</h1>\
+<ul>\
+<li><strong>red</strong></li>\
+<li><strong>green</strong></li>\
+<li><strong>blue</strong></li>\
+</ul>";	
+	
+    eval(steal.build.types['text/mustache']({text:template,id:'test\\qunit\\like\\complex_mustache'}));
+	ok(Handlebars.TemplateCache['test_qunit_like_complex_mustache'],'template registered');
+	var testOutput = $.View("//test/qunit/like/complex.mustache", this.complexData);
+	equals(strip(correctOutput), strip(testOutput));
+});
