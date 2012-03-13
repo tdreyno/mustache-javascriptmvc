@@ -475,7 +475,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 // lib/handlebars/base.js
 var Handlebars = {};
 
-Handlebars.VERSION = "1.0.beta.2";
+Handlebars.VERSION = "1.0.beta.5";
 
 Handlebars.Parser = handlebars;
 
@@ -488,7 +488,14 @@ Handlebars.print = function(ast) {
   return new Handlebars.PrintVisitor().accept(ast);
 };
 
-Handlebars.helpers  = {};
+Handlebars.logger = {
+  DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3, level: 3,
+
+  // override in the host environment
+  log: function(level, str) {}
+};
+
+Handlebars.log = function(level, str) { Handlebars.logger.log(level, str); };Handlebars.helpers  = {};
 Handlebars.partials = {};
 
 Handlebars.registerHelper = function(name, fn, inverse) {
@@ -508,16 +515,16 @@ Handlebars.registerHelper('helperMissing', function(arg) {
   }
 });
 
+var toString = Object.prototype.toString, functionType = "[object Function]";
+
 Handlebars.registerHelper('blockHelperMissing', function(context, options) {
   var inverse = options.inverse || function() {}, fn = options.fn;
 
 
   var ret = "";
-  var type = Object.prototype.toString.call(context);
+  var type = toString.call(context);
 
-  if(type === "[object Function]") {
-    context = context();
-  }
+  if(type === functionType) { context = context.call(this); }
 
   if(context === true) {
     return fn(this);
@@ -552,6 +559,9 @@ Handlebars.registerHelper('each', function(context, options) {
 });
 
 Handlebars.registerHelper('if', function(context, options) {
+  var type = toString.call(context);
+  if(type === functionType) { context = context.call(this); }
+
   if(!context || Handlebars.Utils.isEmpty(context)) {
     return options.inverse(this);
   } else {
@@ -571,15 +581,10 @@ Handlebars.registerHelper('with', function(context, options) {
   return options.fn(context);
 });
 
-Handlebars.logger = {
-  DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3, level: 3,
+Handlebars.registerHelper('log', function(context) {
+  Handlebars.log(context);
+});;
 
-  // override in the host environment
-  log: function(level, str) {}
-};
-
-Handlebars.log = function(level, str) { Handlebars.logger.log(level, str); };
-;
 // lib/handlebars/ast.js
 (function() {
 
@@ -648,7 +653,7 @@ Handlebars.log = function(level, str) { Handlebars.logger.log(level, str); };
       var part = parts[i];
 
       if(part === "..") { depth++; }
-      else if(part === "." || part === "this") { continue; }
+      else if(part === "." || part === "this") { this.isScoped = true; }
       else { dig.push(part); }
     }
 
@@ -688,6 +693,7 @@ Handlebars.Visitor.prototype = {
     return this[object.type](object);
   }
 };;
+
 // lib/handlebars/utils.js
 Handlebars.Exception = function(message) {
   var tmp = Error.prototype.constructor.apply(this, arguments);
@@ -695,8 +701,10 @@ Handlebars.Exception = function(message) {
   for (var p in tmp) {
     if (tmp.hasOwnProperty(p)) { this[p] = tmp[p]; }
   }
+
+  this.message = tmp.message;
 };
-Handlebars.Exception.prototype = new Error;
+Handlebars.Exception.prototype = new Error();
 
 // Build out our basic SafeString type
 Handlebars.SafeString = function(string) {
@@ -750,7 +758,9 @@ Handlebars.SafeString.prototype.toString = function() {
     }
   };
 })();;
+
 // lib/handlebars/compiler.js
+
 Handlebars.Compiler = function() {};
 Handlebars.JavaScriptCompiler = function() {};
 
@@ -776,13 +786,13 @@ Handlebars.JavaScriptCompiler = function() {};
   Compiler.MULTI_PARAM_OPCODES = {
     appendContent: 1,
     getContext: 1,
-    lookupWithHelpers: 1,
+    lookupWithHelpers: 2,
     lookup: 1,
-    invokeMustache: 2,
+    invokeMustache: 3,
     pushString: 1,
     truthyOrFallback: 1,
     functionOrFallback: 1,
-    invokeProgram: 2,
+    invokeProgram: 3,
     invokePartial: 1,
     push: 1,
     assignToHash: 1,
@@ -844,7 +854,25 @@ Handlebars.JavaScriptCompiler = function() {};
     compile: function(program, options) {
       this.children = [];
       this.depths = {list: []};
-      this.options = options || {};
+      this.options = options;
+
+      // These changes will propagate to the other compiler components
+      var knownHelpers = this.options.knownHelpers;
+      this.options.knownHelpers = {
+        'helperMissing': true,
+        'blockHelperMissing': true,
+        'each': true,
+        'if': true,
+        'unless': true,
+        'with': true,
+        'log': true
+      };
+      if (knownHelpers) {
+        for (var name in knownHelpers) {
+          this.options.knownHelpers[name] = knownHelpers[name];
+        }
+      }
+
       return this.program(program);
     },
 
@@ -860,6 +888,7 @@ Handlebars.JavaScriptCompiler = function() {};
         statement = statements[i];
         this[statement.type](statement);
       }
+      this.isSimple = l === 1;
 
       this.depths.list = this.depths.list.sort(function(a, b) {
         return a - b;
@@ -870,7 +899,7 @@ Handlebars.JavaScriptCompiler = function() {};
 
     compileProgram: function(program) {
       var result = new this.compiler().compile(program, this.options);
-      var guid = this.guid++;
+      var guid = this.guid++, depth;
 
       this.usePartial = this.usePartial || result.usePartial;
 
@@ -899,7 +928,7 @@ Handlebars.JavaScriptCompiler = function() {};
         this.declare('inverse', inverseGuid);
       }
 
-      this.opcode('invokeProgram', programGuid, params.length);
+      this.opcode('invokeProgram', programGuid, params.length, !!mustache.hash);
       this.declare('inverse', null);
       this.opcode('append');
     },
@@ -911,7 +940,8 @@ Handlebars.JavaScriptCompiler = function() {};
 
       this.declare('inverse', programGuid);
 
-      this.opcode('invokeProgram', null, params.length);
+      this.opcode('invokeProgram', null, params.length, !!block.mustache.hash);
+      this.declare('inverse', null);
       this.opcode('append');
     },
 
@@ -936,7 +966,7 @@ Handlebars.JavaScriptCompiler = function() {};
       if(partial.context) {
         this.ID(partial.context);
       } else {
-        this.opcode('push', 'context');
+        this.opcode('push', 'depth0');
       }
 
       this.opcode('invokePartial', id.original);
@@ -950,9 +980,9 @@ Handlebars.JavaScriptCompiler = function() {};
     mustache: function(mustache) {
       var params = this.setupStackForMustache(mustache);
 
-      this.opcode('invokeMustache', params.length, mustache.id.original);
+      this.opcode('invokeMustache', params.length, mustache.id.original, !!mustache.hash);
 
-      if(mustache.escaped) {
+      if(mustache.escaped && !this.options.noEscape) {
         this.opcode('appendEscaped');
       } else {
         this.opcode('append');
@@ -964,7 +994,7 @@ Handlebars.JavaScriptCompiler = function() {};
 
       this.opcode('getContext', id.depth);
 
-      this.opcode('lookupWithHelpers', id.parts[0] || null);
+      this.opcode('lookupWithHelpers', id.parts[0] || null, id.isScoped || false);
 
       for(var i=1, l=id.parts.length; i<l; i++) {
         this.opcode('lookup', id.parts[i]);
@@ -1005,10 +1035,11 @@ Handlebars.JavaScriptCompiler = function() {};
       }
     },
 
-    opcode: function(name, val1, val2) {
+    opcode: function(name, val1, val2, val3) {
       this.opcodes.push(Compiler.OPCODE_MAP[name]);
       if(val1 !== undefined) { this.opcodes.push(val1); }
       if(val2 !== undefined) { this.opcodes.push(val2); }
+      if(val3 !== undefined) { this.opcodes.push(val3); }
     },
 
     declare: function(name, value) {
@@ -1033,8 +1064,6 @@ Handlebars.JavaScriptCompiler = function() {};
 
       if(mustache.hash) {
         this.hash(mustache.hash);
-      } else {
-        this.opcode('push', '{}');
       }
 
       this.ID(mustache.id);
@@ -1047,39 +1076,51 @@ Handlebars.JavaScriptCompiler = function() {};
     // PUBLIC API: You can override these methods in a subclass to provide
     // alternative compiled forms for name lookup and buffering semantics
     nameLookup: function(parent, name, type) {
-      if(JavaScriptCompiler.RESERVED_WORDS[name] || name.indexOf('-') !== -1 || !isNaN(name)) {
-        return parent + "['" + name + "']";
-      } else if (/^[0-9]+$/.test(name)) {
+      if (/^[0-9]+$/.test(name)) {
         return parent + "[" + name + "]";
-      } else {
+      } else if (JavaScriptCompiler.isValidJavaScriptVariableName(name)) {
         return parent + "." + name;
+      }
+      else {
+        return parent + "['" + name + "']";
       }
     },
 
     appendToBuffer: function(string) {
-      return "buffer = buffer + " + string + ";";
+      if (this.environment.isSimple) {
+        return "return " + string + ";";
+      } else {
+        return "buffer += " + string + ";";
+      }
     },
 
     initializeBuffer: function() {
       return this.quotedString("");
     },
+
+    namespace: "Handlebars",
     // END PUBLIC API
 
-    compile: function(environment, options) {
+    compile: function(environment, options, context, asObject) {
       this.environment = environment;
       this.options = options || {};
+
+      this.name = this.environment.name;
+      this.isChild = !!context;
+      this.context = context || {
+        programs: [],
+        aliases: { self: 'this' },
+        registers: {list: []}
+      };
 
       this.preamble();
 
       this.stackSlot = 0;
       this.stackVars = [];
-      this.registers = {list: []};
 
       this.compileChildren(environment, options);
 
-      Handlebars.log(Handlebars.logger.DEBUG, environment.disassemble() + "\n\n");
-
-      var opcodes = environment.opcodes, opcode, name, declareName, declareVal;
+      var opcodes = environment.opcodes, opcode;
 
       this.i = 0;
 
@@ -1095,7 +1136,7 @@ Handlebars.JavaScriptCompiler = function() {};
         }
       }
 
-      return this.createFunction();
+      return this.createFunctionContext(asObject);
     },
 
     nextOpcode: function(n) {
@@ -1126,11 +1167,27 @@ Handlebars.JavaScriptCompiler = function() {};
 
     preamble: function() {
       var out = [];
-      out.push("var buffer = " + this.initializeBuffer() + ", currentContext = context");
 
-      var copies = "helpers = helpers || Handlebars.helpers;";
-      if(this.environment.usePartial) { copies = copies + " partials = partials || Handlebars.partials;"; }
-      out.push(copies);
+      // this register will disambiguate helper lookup from finding a function in
+      // a context. This is necessary for mustache compatibility, which requires
+      // that context functions in blocks are evaluated by blockHelperMissing, and
+      // then proceed as if the resulting value was provided to blockHelperMissing.
+      this.useRegister('foundHelper');
+
+      if (!this.isChild) {
+        var namespace = this.namespace;
+        var copies = "helpers = helpers || " + namespace + ".helpers;";
+        if(this.environment.usePartial) { copies = copies + " partials = partials || " + namespace + ".partials;"; }
+        out.push(copies);
+      } else {
+        out.push('');
+      }
+
+      if (!this.environment.isSimple) {
+        out.push(", buffer = " + this.initializeBuffer());
+      } else {
+        out.push("");
+      }
 
       // track the last context pushed into place to allow skipping the
       // getContext opcode when it would be a noop
@@ -1138,63 +1195,52 @@ Handlebars.JavaScriptCompiler = function() {};
       this.source = out;
     },
 
-    createFunction: function() {
-      var container = {
-        escapeExpression: Handlebars.Utils.escapeExpression,
-        invokePartial: Handlebars.VM.invokePartial,
-        programs: [],
-        program: function(i, helpers, partials, data) {
-          var programWrapper = this.programs[i];
-          if(data) {
-            return Handlebars.VM.program(this.children[i], helpers, partials, data);
-          } else if(programWrapper) {
-            return programWrapper;
-          } else {
-            programWrapper = this.programs[i] = Handlebars.VM.program(this.children[i], helpers, partials);
-            return programWrapper;
-          }
-        },
-        programWithDepth: Handlebars.VM.programWithDepth,
-        noop: Handlebars.VM.noop
-      };
-      var locals = this.stackVars.concat(this.registers.list);
-
-      if(locals.length > 0) {
-        this.source[0] = this.source[0] + ", " + locals.join(", ");
+    createFunctionContext: function(asObject) {
+      var locals = this.stackVars;
+      if (!this.isChild) {
+        locals = locals.concat(this.context.registers.list);
       }
 
-      this.source[0] = this.source[0] + ";";
+      if(locals.length > 0) {
+        this.source[1] = this.source[1] + ", " + locals.join(", ");
+      }
 
-      this.source.push("return buffer;");
+      // Generate minimizer alias mappings
+      if (!this.isChild) {
+        var aliases = [];
+        for (var alias in this.context.aliases) {
+          this.source[1] = this.source[1] + ', ' + alias + '=' + this.context.aliases[alias];
+        }
+      }
 
-      var params = ["Handlebars", "context", "helpers", "partials"];
+      if (this.source[1]) {
+        this.source[1] = "var " + this.source[1].substring(2) + ";";
+      }
 
-      if(this.options.data) { params.push("data"); }
+      // Merge children
+      if (!this.isChild) {
+        this.source[1] += '\n' + this.context.programs.join('\n') + '\n';
+      }
+
+      if (!this.environment.isSimple) {
+        this.source.push("return buffer;");
+      }
+
+      var params = this.isChild ? ["depth0", "data"] : ["Handlebars", "depth0", "helpers", "partials", "data"];
 
       for(var i=0, l=this.environment.depths.list.length; i<l; i++) {
         params.push("depth" + this.environment.depths.list[i]);
       }
 
-      if(params.length === 4 && !this.environment.usePartial) { params.pop(); }
+      if (asObject) {
+        params.push(this.source.join("\n  "));
 
-      params.push(this.source.join("\n"));
-
-      var fn = Function.apply(this, params);
-      fn.displayName = "Handlebars.js";
-
-      Handlebars.log(Handlebars.logger.DEBUG, fn.toString() + "\n\n");
-
-      container.render = fn;
-
-      container.children = this.environment.children;
-
-      return function(context, options, $depth) {
-        options = options || {};
-        var args = [Handlebars, context, options.helpers, options.partials, options.data];
-        var depth = Array.prototype.slice.call(arguments, 2);
-        args = args.concat(depth);
-        return container.render.apply(container, args);
-      };
+        return Function.apply(this, params);
+      } else {
+        var functionSource = 'function ' + (this.name || '') + '(' + params.join(',') + ') {\n  ' + this.source.join("\n  ") + '}';
+        Handlebars.log(Handlebars.logger.DEBUG, functionSource + "\n\n");
+        return functionSource;
+      }
     },
 
     appendContent: function(content) {
@@ -1204,54 +1250,61 @@ Handlebars.JavaScriptCompiler = function() {};
     append: function() {
       var local = this.popStack();
       this.source.push("if(" + local + " || " + local + " === 0) { " + this.appendToBuffer(local) + " }");
+      if (this.environment.isSimple) {
+        this.source.push("else { " + this.appendToBuffer("''") + " }");
+      }
     },
 
     appendEscaped: function() {
       var opcode = this.nextOpcode(1), extra = "";
+      this.context.aliases.escapeExpression = 'this.escapeExpression';
 
       if(opcode[0] === 'appendContent') {
         extra = " + " + this.quotedString(opcode[1][0]);
         this.eat(opcode);
       }
 
-      this.source.push(this.appendToBuffer("this.escapeExpression(" + this.popStack() + ")" + extra));
+      this.source.push(this.appendToBuffer("escapeExpression(" + this.popStack() + ")" + extra));
     },
 
     getContext: function(depth) {
       if(this.lastContext !== depth) {
         this.lastContext = depth;
-
-        if(depth === 0) {
-          this.source.push("currentContext = context;");
-        } else {
-          this.source.push("currentContext = depth" + depth + ";");
-        }
       }
     },
 
-    lookupWithHelpers: function(name) {
+    lookupWithHelpers: function(name, isScoped) {
       if(name) {
         var topStack = this.nextStack();
 
-        var toPush =  "if('" + name + "' in helpers) { " + topStack +
-                      " = " + this.nameLookup('helpers', name, 'helper') +
-                      "; } else { " + topStack + " = " +
-                      this.nameLookup('currentContext', name, 'context') +
-                      "; }";
+        this.usingKnownHelper = false;
 
+        var toPush;
+        if (!isScoped && this.options.knownHelpers[name]) {
+          toPush = topStack + " = " + this.nameLookup('helpers', name, 'helper');
+          this.usingKnownHelper = true;
+        } else if (isScoped || this.options.knownHelpersOnly) {
+          toPush = topStack + " = " + this.nameLookup('depth' + this.lastContext, name, 'context');
+        } else {
+          this.register('foundHelper', this.nameLookup('helpers', name, 'helper'));
+          toPush = topStack + " = foundHelper || " + this.nameLookup('depth' + this.lastContext, name, 'context');
+        }
+
+        toPush += ';';
         this.source.push(toPush);
       } else {
-        this.pushStack("currentContext");
+        this.pushStack('depth' + this.lastContext);
       }
     },
 
     lookup: function(name) {
       var topStack = this.topStack();
-      this.source.push(topStack + " = " + this.nameLookup(topStack, name, 'context') + ";");
+      this.source.push(topStack + " = (" + topStack + " === null || " + topStack + " === undefined || " + topStack + " === false ? " +
+         topStack + " : " + this.nameLookup(topStack, name, 'context') + ");");
     },
 
     pushStringParam: function(string) {
-      this.pushStack("currentContext");
+      this.pushStack('depth' + this.lastContext);
       this.pushString(string);
     },
 
@@ -1263,30 +1316,47 @@ Handlebars.JavaScriptCompiler = function() {};
       this.pushStack(name);
     },
 
-    invokeMustache: function(paramSize, original) {
-      this.populateParams(paramSize, this.quotedString(original), "{}", null, function(nextStack, helperMissingString, id) {
-        this.source.push("else if(" + id + "=== undefined) { " + nextStack + " = helpers.helperMissing.call(" + helperMissingString + "); }");
-        this.source.push("else { " + nextStack + " = " + id + "; }");
+    invokeMustache: function(paramSize, original, hasHash) {
+      this.populateParams(paramSize, this.quotedString(original), "{}", null, hasHash, function(nextStack, helperMissingString, id) {
+        if (!this.usingKnownHelper) {
+          this.context.aliases.helperMissing = 'helpers.helperMissing';
+          this.context.aliases.undef = 'void 0';
+          this.source.push("else if(" + id + "=== undef) { " + nextStack + " = helperMissing.call(" + helperMissingString + "); }");
+          if (nextStack !== id) {
+            this.source.push("else { " + nextStack + " = " + id + "; }");
+          }
+        }
       });
     },
 
-    invokeProgram: function(guid, paramSize) {
+    invokeProgram: function(guid, paramSize, hasHash) {
       var inverse = this.programExpression(this.inverse);
       var mainProgram = this.programExpression(guid);
 
-      this.populateParams(paramSize, null, mainProgram, inverse, function(nextStack, helperMissingString, id) {
-        this.source.push("else { " + nextStack + " = helpers.blockHelperMissing.call(" + helperMissingString + "); }");
+      this.populateParams(paramSize, null, mainProgram, inverse, hasHash, function(nextStack, helperMissingString, id) {
+        if (!this.usingKnownHelper) {
+          this.context.aliases.blockHelperMissing = 'helpers.blockHelperMissing';
+          this.source.push("else { " + nextStack + " = blockHelperMissing.call(" + helperMissingString + "); }");
+        }
       });
     },
 
-    populateParams: function(paramSize, helperId, program, inverse, fn) {
+    populateParams: function(paramSize, helperId, program, inverse, hasHash, fn) {
+      var needsRegister = hasHash || this.options.stringParams || inverse || this.options.data;
       var id = this.popStack(), nextStack;
-      var params = [], param, stringParam;
+      var params = [], param, stringParam, stringOptions;
 
-      var hash = this.popStack();
+      if (needsRegister) {
+        this.register('tmp1', program);
+        stringOptions = 'tmp1';
+      } else {
+        stringOptions = '{ hash: {} }';
+      }
 
-      this.register('tmp1', program);
-      this.source.push('tmp1.hash = ' + hash + ';');
+      if (needsRegister) {
+        var hash = (hasHash ? this.popStack() : '{}');
+        this.source.push('tmp1.hash = ' + hash + ';');
+      }
 
       if(this.options.stringParams) {
         this.source.push('tmp1.contexts = [];');
@@ -1310,23 +1380,36 @@ Handlebars.JavaScriptCompiler = function() {};
         this.source.push('tmp1.data = data;');
       }
 
-      params.push('tmp1');
+      params.push(stringOptions);
 
-      this.populateCall(params, id, helperId || id, fn);
+      this.populateCall(params, id, helperId || id, fn, program !== '{}');
     },
 
-    populateCall: function(params, id, helperId, fn) {
-      var paramString = ["context"].concat(params).join(", ");
-      var helperMissingString = ["context"].concat(helperId).concat(params).join(", ");
+    populateCall: function(params, id, helperId, fn, program) {
+      var paramString = ["depth0"].concat(params).join(", ");
+      var helperMissingString = ["depth0"].concat(helperId).concat(params).join(", ");
 
-      nextStack = this.nextStack();
+      var nextStack = this.nextStack();
 
-      this.source.push("if(typeof " + id + " === 'function') { " + nextStack + " = " + id + ".call(" + paramString + "); }");
+      if (this.usingKnownHelper) {
+        this.source.push(nextStack + " = " + id + ".call(" + paramString + ");");
+      } else {
+        this.context.aliases.functionType = '"function"';
+        var condition = program ? "foundHelper && " : "";
+        this.source.push("if(" + condition + "typeof " + id + " === functionType) { " + nextStack + " = " + id + ".call(" + paramString + "); }");
+      }
       fn.call(this, nextStack, helperMissingString, id);
+      this.usingKnownHelper = false;
     },
 
     invokePartial: function(context) {
-      this.pushStack("this.invokePartial(" + this.nameLookup('partials', context, 'partial') + ", '" + context + "', " + this.popStack() + ", helpers, partials);");
+      var params = [this.nameLookup('partials', context, 'partial'), "'" + context + "'", this.popStack(), "helpers", "partials"];
+
+      if (this.options.data) {
+        params.push("data");
+      }
+
+      this.pushStack("self.invokePartial(" + params.join(", ") + ");");
     },
 
     assignToHash: function(key) {
@@ -1342,48 +1425,39 @@ Handlebars.JavaScriptCompiler = function() {};
 
     compileChildren: function(environment, options) {
       var children = environment.children, child, compiler;
-      var compiled = [];
 
       for(var i=0, l=children.length; i<l; i++) {
         child = children[i];
         compiler = new this.compiler();
 
-        compiled[i] = compiler.compile(child, options);
+        this.context.programs.push('');     // Placeholder to prevent name conflicts for nested children
+        var index = this.context.programs.length;
+        child.index = index;
+        child.name = 'program' + index;
+        this.context.programs[index] = compiler.compile(child, options, this.context);
       }
-
-      environment.rawChildren = children;
-      environment.children = compiled;
     },
 
     programExpression: function(guid) {
-      if(guid == null) { return "this.noop"; }
+      if(guid == null) { return "self.noop"; }
 
-      var programParams = [guid, "helpers", "partials"];
+      var child = this.environment.children[guid],
+          depths = child.depths.list, depth;
 
-      var depths = this.environment.rawChildren[guid].depths.list;
-
-      if(this.options.data) { programParams.push("data"); }
+      var programParams = [child.index, child.name, "data"];
 
       for(var i=0, l = depths.length; i<l; i++) {
         depth = depths[i];
 
-        if(depth === 1) { programParams.push("context"); }
+        if(depth === 1) { programParams.push("depth0"); }
         else { programParams.push("depth" + (depth - 1)); }
       }
 
-      if(!this.environment.usePartial) {
-        if(programParams[3]) {
-          programParams[2] = "null";
-        } else {
-          programParams.pop();
-        }
-      }
-
       if(depths.length === 0) {
-        return "this.program(" + programParams.join(", ") + ")";
+        return "self.program(" + programParams.join(", ") + ")";
       } else {
-        programParams[0] = "this.children[" + guid + "]";
-        return "this.programWithDepth(" + programParams.join(", ") + ")";
+        programParams.shift();
+        return "self.programWithDepth(" + programParams.join(", ") + ")";
       }
     },
 
@@ -1393,9 +1467,9 @@ Handlebars.JavaScriptCompiler = function() {};
     },
 
     useRegister: function(name) {
-      if(!this.registers[name]) {
-        this.registers[name] = true;
-        this.registers.list.push(name);
+      if(!this.context.registers[name]) {
+        this.context.registers[name] = true;
+        this.context.registers.list.push(name);
       }
     },
 
@@ -1427,61 +1501,126 @@ Handlebars.JavaScriptCompiler = function() {};
     }
   };
 
-  var reservedWords = ("break case catch continue default delete do else finally " +
-                       "for function if in instanceof new return switch this throw " + 
-                       "try typeof var void while with null true false").split(" ");
+  var reservedWords = (
+    "break else new var" +
+    " case finally return void" +
+    " catch for switch while" +
+    " continue function this with" +
+    " default if throw" +
+    " delete in try" +
+    " do instanceof typeof" +
+    " abstract enum int short" +
+    " boolean export interface static" +
+    " byte extends long super" +
+    " char final native synchronized" +
+    " class float package throws" +
+    " const goto private transient" +
+    " debugger implements protected volatile" +
+    " double import public let yield"
+  ).split(" ");
 
-  compilerWords = JavaScriptCompiler.RESERVED_WORDS = {};
+  var compilerWords = JavaScriptCompiler.RESERVED_WORDS = {};
 
   for(var i=0, l=reservedWords.length; i<l; i++) {
     compilerWords[reservedWords[i]] = true;
   }
 
+  JavaScriptCompiler.isValidJavaScriptVariableName = function(name) {
+    if(!JavaScriptCompiler.RESERVED_WORDS[name] && /^[a-zA-Z_$][0-9a-zA-Z_$]+$/.test(name)) {
+      return true;
+    }
+    return false;
+  };
+
 })(Handlebars.Compiler, Handlebars.JavaScriptCompiler);
 
+Handlebars.precompile = function(string, options) {
+  options = options || {};
+
+  var ast = Handlebars.parse(string);
+  var environment = new Handlebars.Compiler().compile(ast, options);
+  return new Handlebars.JavaScriptCompiler().compile(environment, options);
+};
+
+Handlebars.compile = function(string, options) {
+  options = options || {};
+
+  var compiled;
+  function compile() {
+    var ast = Handlebars.parse(string);
+    var environment = new Handlebars.Compiler().compile(ast, options);
+    var templateSpec = new Handlebars.JavaScriptCompiler().compile(environment, options, undefined, true);
+    return Handlebars.template(templateSpec);
+  }
+
+  // Template is only compiled on first use and cached after that point.
+  return function(context, options) {
+    if (!compiled) {
+      compiled = compile();
+    }
+    return compiled.call(this, context, options);
+  };
+};
+
 Handlebars.VM = {
-  programWithDepth: function(fn, helpers, partials, data, $depth) {
-    var args = Array.prototype.slice.call(arguments, 4);
+  template: function(templateSpec) {
+    // Just add water
+    var container = {
+      escapeExpression: Handlebars.Utils.escapeExpression,
+      invokePartial: Handlebars.VM.invokePartial,
+      programs: [],
+      program: function(i, fn, data) {
+        var programWrapper = this.programs[i];
+        if(data) {
+          return Handlebars.VM.program(fn, data);
+        } else if(programWrapper) {
+          return programWrapper;
+        } else {
+          programWrapper = this.programs[i] = Handlebars.VM.program(fn);
+          return programWrapper;
+        }
+      },
+      programWithDepth: Handlebars.VM.programWithDepth,
+      noop: Handlebars.VM.noop
+    };
 
     return function(context, options) {
       options = options || {};
-
-      options = {
-        helpers: options.helpers || helpers,
-        partials: options.partials || partials,
-        data: options.data || data
-      };
-
-      return fn.apply(this, [context, options].concat(args));
+      return templateSpec.call(container, Handlebars, context, options.helpers, options.partials, options.data);
     };
   },
-  program: function(fn, helpers, partials, data) {
+
+  programWithDepth: function(fn, data, $depth) {
+    var args = Array.prototype.slice.call(arguments, 2);
+
     return function(context, options) {
       options = options || {};
 
-      return fn(context, {
-        helpers: options.helpers || helpers,
-        partials: options.partials || partials,
-        data: options.data || data
-      });
+      return fn.apply(this, [context, options.data || data].concat(args));
+    };
+  },
+  program: function(fn, data) {
+    return function(context, options) {
+      options = options || {};
+
+      return fn(context, options.data || data);
     };
   },
   noop: function() { return ""; },
-  compile: function(string, options) {
-    var ast = Handlebars.parse(string);
-    var environment = new Handlebars.Compiler().compile(ast, options);
-    return new Handlebars.JavaScriptCompiler().compile(environment, options);
-  },
-  invokePartial: function(partial, name, context, helpers, partials) {
+  invokePartial: function(partial, name, context, helpers, partials, data) {
+    var options = { helpers: helpers, partials: partials, data: data };
+
     if(partial === undefined) {
       throw new Handlebars.Exception("The partial " + name + " could not be found");
     } else if(partial instanceof Function) {
-      return partial(context, {helpers: helpers, partials: partials});
+      return partial(context, options);
+    } else if (!Handlebars.compile) {
+      throw new Handlebars.Exception("The partial " + name + " could not be compiled when running in runtime-only mode");
     } else {
-      partials[name] = Handlebars.VM.compile(partial);
-      return partials[name](context, {helpers: helpers, partials: partials});
+      partials[name] = Handlebars.compile(partial);
+      return partials[name](context, options);
     }
   }
 };
 
-Handlebars.compile = Handlebars.VM.compile;;
+Handlebars.template = Handlebars.VM.template;

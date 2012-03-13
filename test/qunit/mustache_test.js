@@ -39,6 +39,7 @@ test("Complex mustache example should work", function() {
     "<li><strong>green</strong></li>" +
     "<li><strong>blue</strong></li>" +
     "</ul>";
+    equals(correctOutput, testOutput.replace(/\s*/g, ""));
 }),
 
 test("Ensure handlebar helpers work", function() {
