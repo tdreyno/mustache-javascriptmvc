@@ -26,3 +26,14 @@ Create some .mustache files and use them normally:
 
 	$("#elem").html("//views/template.mustache", { variable: "Value" })
 
+Using "hookupModel" and "hookupView":
+
+	<script type="text/mustache" id="subView">
+		<div {{{hookupModel}}}></div>
+	</script>
+
+	<script type="text/mustache" id="mainView">
+		{{#each this}}
+			{{{hookupView "subView" this}}}
+		{{/each}}
+	</script>

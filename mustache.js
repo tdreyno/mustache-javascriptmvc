@@ -40,4 +40,8 @@ steal('jquery/view','jquery/lang/json')
 		});
 		return 'data-view-id="' + id + '"';
 	});
+	
+	Handlebars.registerHelper('hookupView', function(view, item) {
+		return $.View(view, item);
+	});
 })
