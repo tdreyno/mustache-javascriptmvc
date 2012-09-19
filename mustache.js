@@ -1,13 +1,13 @@
 steal('jquery/view','jquery/lang/json')
         .then("./handlebars.js")
-        .then(function($) {
+        .then(function() {
   
   Handlebars.TemplateCache = {};
   
 	$.View.register({
 	
 		suffix: "mustache",
-		plugin: "jquery/view/mustache",		
+		plugin: "mustache",		
 		renderer: function(id, text){
       Handlebars.TemplateCache[id] = Handlebars.compile(text);
 			return function(data, helpers){
@@ -44,4 +44,6 @@ steal('jquery/view','jquery/lang/json')
 	Handlebars.registerHelper('hookupView', function(view, item) {
 		return $.View(view, item);
 	});
-})
+
+	return can;
+});
