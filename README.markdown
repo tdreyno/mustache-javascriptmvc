@@ -18,13 +18,36 @@ Alternatively, you can grab the code from the Github repository:
 
 	git clone git://github.com/tdreyno/mustache-javascriptmvc.git mustache
 
-Include it in your app:
+Configure it to load for all .mustache files in your stealconfig.js:
 
-	steal.plugins("mustache")
+```javascript
+steal.config({
+	map: {
+		"*": {
+			'jquery/jquery.js' : "jquery",
+			"can/util/util.js": "can/util/jquery/jquery.js"
+		}
+	},
+	paths: {
+		"jquery": "can/util/jquery/jquery.1.8.1.js"
+	},
+	ext: {
+		js: "js",
+		css: "css",
+		less: "steal/less/less.js",
+		coffee: "steal/coffee/coffee.js",
+		mustache: "mustache/mustache.js"
+	}
+});
+```
 
 Create some .mustache files and use them normally:
 
-	$("#elem").html("//views/template.mustache", { variable: "Value" })
+```javascript
+steal("//views/template.mustache",function(template) {
+	$("#elem").html(template({ variable: "Value" }))
+});
+```
 
 Using "hookupModel" and "hookupView":
 
