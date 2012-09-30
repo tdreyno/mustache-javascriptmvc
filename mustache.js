@@ -1,13 +1,13 @@
 steal('jquery/view','jquery/lang/json')
         .then("./handlebars.js")
         .then(function() {
-  
+
   Handlebars.TemplateCache = {};
-  
+
 	$.View.register({
-	
+
 		suffix: "mustache",
-		plugin: "mustache",		
+		plugin: "mustache",
 		renderer: function(id, text){
       Handlebars.TemplateCache[id] = Handlebars.compile(text);
 			return function(data, helpers){
@@ -15,7 +15,7 @@ steal('jquery/view','jquery/lang/json')
 				return Handlebars.TemplateCache[id](data);
 			};
 		},
-		
+
 		get: function(id, url){
 			var text = $.ajax({
 					async:    false,
@@ -28,19 +28,19 @@ steal('jquery/view','jquery/lang/json')
 			return this.renderer(id, text);
 		},
 		script: function(id, str){
-	  		return "((function(){ Handlebars.TemplateCache['"+id+"'] = Handlebars.compile("+
-	  			$.quoteString(str) +
-	  		"); return function(data){return Handlebars.TemplateCache['"+id+"'](data)} })())";
+			return "((function(){ Handlebars.TemplateCache['"+id+"'] = Handlebars.template("+
+				Handlebars.precompile(str) +
+			"); return function(data){ return Handlebars.TemplateCache['"+id+"'](data)} })())";
 		}
 	});
-	
+
 	Handlebars.registerHelper('hookupModel',function() {
 		var model = this, id = $.View.hookup(function(el) {
 			model.hookup(el);
 		});
 		return 'data-view-id="' + id + '"';
 	});
-	
+
 	Handlebars.registerHelper('hookupView', function(view, item) {
 		return $.View(view, item);
 	});
