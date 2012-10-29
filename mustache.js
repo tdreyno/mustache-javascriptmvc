@@ -1,6 +1,6 @@
-steal('jquery/view','jquery/lang/json')
-		.then("./handlebars.js")
-		.then(function() {
+steal('can','can/view',"./handlebars.js",function(can) {
+	"use strict";
+	/*global Handlebars*/
 
 	Handlebars.TemplateCache = {};
 	// fixes can.view's used as partials
@@ -27,7 +27,7 @@ steal('jquery/view','jquery/lang/json')
 		return options;
 	};
 
-	$.View.register({
+	can.view.register({
 		suffix: "mustache",
 		plugin: "mustache",
 		renderer: function(id, text){
@@ -43,7 +43,7 @@ steal('jquery/view','jquery/lang/json')
 		},
 
 		get: function(id, url){
-			var text = $.ajax({
+			var text = can.ajax({
 					async:    false,
 					url:      url,
 					dataType: "text",
@@ -61,14 +61,14 @@ steal('jquery/view','jquery/lang/json')
 	});
 
 	Handlebars.registerHelper('hookupModel',function() {
-		var model = this, id = $.View.hook(function(el) {
+		var model = this, id = can.view.hook(function(el) {
 			model.hookup(el);
 		});
 		return id;
 	});
 
 	Handlebars.registerHelper('hookupView', function(view, item) {
-		return $.View(view, item);
+		return can.view(view, item);
 	});
 
 	return can;

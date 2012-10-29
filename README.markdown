@@ -1,16 +1,14 @@
 mustache-javascriptmvc
 =============
 
-mustache-javascriptmvc brings the power of the [Mustache templating language](http://mustache.github.com/) and its superset handlebars.js to javascriptmvc.
-
+mustache-javascriptmvc brings the power of the [Mustache templating language](http://mustache.github.com/) and its superset handlebars.js to CanJS and JavaScriptMVC.
 
 Checkout the official Handlebars docs site at [http://www.handlebarsjs.com](http://www.handlebarsjs.com) for syntax.
 
-*Note* handlebars.js defines _helpers_ by registering them with the Handlebars prototype.  Although javascriptmvc supports passing handlers into the view/render calls, mustache-javascriptmvc does not currently pass them on to handlebars.
-
-
 Installation
 ==========
+
+NOTE: steal is required to use this plugin with CanJS.
 
 	./steal/js steal/getjs mustache
 
@@ -60,3 +58,35 @@ Using "hookupModel" and "hookupView":
 			{{{hookupView "subView" this}}}
 		{{/each}}
 	</script>
+
+Passing extra helpers to a view:
+
+```javascript
+steal("//views/template.mustache",function(template) {
+	$("#elem").html(template({ variable: "Value" },{
+		helpers: { plus: function(x,y) { return x + y; } }
+	}));
+});
+```
+
+	<p>{{x}} + {{y}} = {{plus x y}}</p>
+
+Using partials:
+
+```javascript
+steal("//views/template.mustache","//views/subView.mustache",function(template,subView) {
+	$("#elem").html(template({ variable: "Value" },{
+		partials: { subView: subView }
+	}));
+});
+```
+
+views/subView.mustache:
+
+	<div {{{hookupModel}}}></div>
+
+views/template.mustache:
+
+	{{#each this}}
+		{{{> subView}}}
+	{{/each}}
