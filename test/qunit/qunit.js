@@ -1,4 +1,4 @@
-steal.plugins("mustache", //load your app
+steal("mustache", //load your app
   "funcunit/qunit",  //load qunit
   "jquery/model")
-  .then("./mustache_test")
+  .then("./mustache_test");
