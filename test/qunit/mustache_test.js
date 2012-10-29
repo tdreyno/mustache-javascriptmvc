@@ -95,10 +95,10 @@ test("Ensure global helpers work", function() {
 test("Ensure hookup model works",function() {
 	$.Model('HookupTest');
 	var model = new HookupTest({id:123,name:'test'});
-	
-	$('body').append($.View("test/qunit/hookup.mustache", model));
+
+	$('body').append(can.view.render("test/qunit/hookup.mustache", model));
 	equals($('.model').model().id,123);
-	
+
 	// cleanup
 	delete window.HookupTest;
 	$('.model').remove();

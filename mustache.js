@@ -61,10 +61,10 @@ steal('jquery/view','jquery/lang/json')
 	});
 
 	Handlebars.registerHelper('hookupModel',function() {
-		var model = this, id = $.View.hookup(function(el) {
+		var model = this, id = $.View.hook(function(el) {
 			model.hookup(el);
 		});
-		return 'data-view-id="' + id + '"';
+		return id;
 	});
 
 	Handlebars.registerHelper('hookupView', function(view, item) {
