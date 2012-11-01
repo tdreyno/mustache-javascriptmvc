@@ -3,8 +3,8 @@ steal('can','can/view',"./handlebars.js",function(can) {
 	/*global Handlebars*/
 
 	Handlebars.TemplateCache = {};
-	// fixes can.view's used as partials
-	Handlebars.fixPartialFragments = function(options) {
+	Handlebars._can_view_options = function(options) {
+		// fixes can.view's used as partials
 		if(options && options.partials) {
 			can.each(options.partials,function(fn,name) {
 				if(typeof fn === 'function') {
@@ -23,6 +23,12 @@ steal('can','can/view',"./handlebars.js",function(can) {
 					};
 				}
 			});
+
+			// combine passed in partials (and helpers) with the global set
+			options.partials = can.extend({},Handlebars.partials,options.partials);
+		}
+		if(options && options.helpers) {
+			options.helpers = can.extend({},Handlebars.helpers,options.helpers);
 		}
 		return options;
 	};
@@ -38,7 +44,7 @@ steal('can','can/view',"./handlebars.js",function(can) {
 			// we can use them as the options object.
 			return function(context, options){
 				return Handlebars.TemplateCache[id](context,
-					Handlebars.fixPartialFragments(options));
+					Handlebars._can_view_options(options));
 			};
 		},
 
@@ -56,7 +62,7 @@ steal('can','can/view',"./handlebars.js",function(can) {
 		script: function(id, str){
 			return "((function(){ Handlebars.TemplateCache['"+id+"'] = Handlebars.template("+
 				Handlebars.precompile(str) +
-			"); return function(context,options){ return Handlebars.TemplateCache['"+id+"'](context,Handlebars.fixPartialFragments(options)); } })())";
+			"); return function(context,options){ return Handlebars.TemplateCache['"+id+"'](context,Handlebars._can_view_options(options)); } })())";
 		}
 	});
 

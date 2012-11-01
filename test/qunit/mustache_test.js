@@ -59,8 +59,10 @@ test("Ensure handlebar helpers work", function() {
 
 test("Ensure local helpers work",function() {
 	equal($(localHelpers({
-		foo: 123,
-		bar: 456
+		wrapper: { // wrapper to test existing helpers
+			foo: 123,
+			bar: 456
+		}
 	},{
 		helpers: {
 			add: function(a,b) {
